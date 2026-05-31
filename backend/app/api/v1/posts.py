@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body, Header
 from typing import Dict, Any, Optional, List
 from uuid import uuid4, UUID
 import asyncio
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select

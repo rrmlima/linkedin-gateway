@@ -122,37 +122,55 @@ class LinkedInServiceBase:
         Returns:
             Dictionary with only the 2-3 most essential cookies
         """
-        # ULTRA MINIMAL: Only the absolute essentials
-        ultra_minimal = {'li_at', 'JSESSIONID'}
-        
-        # Optional: Add liap if available (LinkedIn app flag, stable)
-        optional_stable = {'liap'}
-        
-        # Filter to ultra minimal set
+        # Keep the stable cookies that the browser request actually carries.
+        # The previous ultra-minimal set was often too aggressive for current
+        # LinkedIn write-side requests (especially reactions/comments), which
+        # can require additional stable identifiers beyond li_at/JSESSIONID.
+        #
+        # We still avoid highly volatile analytics / short-lived anti-bot
+        # cookies here; those are not reliable to persist server-side.
+        stable_required = {
+            'li_at',
+            'JSESSIONID',
+            'bcookie',
+            'bscookie',
+            'lidc',
+        }
+
+        stable_optional = {
+            'liap',
+            'li_theme',
+            'li_theme_set',
+            'lang',
+            'timezone',
+            'li_mc',
+        }
+
+        # Filter to stable set
         filtered = {}
-        
-        # Always include the absolute essentials
-        for name in ultra_minimal:
+
+        # Always include the stable required cookies
+        for name in stable_required:
             if name in all_cookies:
                 filtered[name] = all_cookies[name]
-        
+
         # Add optional stable cookies if available
-        for name in optional_stable:
+        for name in stable_optional:
             if name in all_cookies:
                 filtered[name] = all_cookies[name]
-        
+
         # Log what we're filtering out (everything else)
         filtered_out = set(all_cookies.keys()) - set(filtered.keys())
         if filtered_out:
             logger.info(f"Filtered out {len(filtered_out)} potentially volatile cookies: {', '.join(sorted(filtered_out))}")
-        
+
         # Ensure we have the absolute minimum
         if 'li_at' not in filtered:
             logger.error("CRITICAL: li_at cookie missing - authentication will fail")
         if 'JSESSIONID' not in filtered:
             logger.error("CRITICAL: JSESSIONID cookie missing - session will fail")
             
-        logger.info(f"Ultra minimal cookie filtering: {len(all_cookies)} -> {len(filtered)} cookies (avoiding fast-expiring ones)")
+        logger.info(f"Stable cookie filtering: {len(all_cookies)} -> {len(filtered)} cookies (avoiding fast-expiring ones)")
         return filtered
     
     async def _get_ugc_post_urn_from_activity(self, activity_id: str) -> str:

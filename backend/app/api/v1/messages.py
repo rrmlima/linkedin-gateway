@@ -10,7 +10,7 @@ import json
 from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Header
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.dependencies import get_db
