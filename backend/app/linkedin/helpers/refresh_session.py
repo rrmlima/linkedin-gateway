@@ -62,41 +62,48 @@ async def refresh_linkedin_session(
 
         logger.info(f"[REFRESH_SESSION][LEGACY] Refreshing primary key for user {user_id_str}")
 
-    # Check WebSocket connection
-    if not ws_handler or user_id_str not in ws_handler.connection_manager.active_connections:
+    # Check WebSocket connection.
+    # Current ConnectionManager tracks browser instances directly, not user_id -> instances.
+    if not ws_handler:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not connected via WebSocket. Cannot refresh LinkedIn session."
+            detail="WebSocket service not available. Cannot refresh LinkedIn session."
         )
+
+    active_connections = ws_handler.connection_manager.active_connections
 
     # Smart instance routing with fallback (for backward compatibility)
     target_instance = None
     if instance_id:
-        if instance_id in ws_handler.connection_manager.active_connections[user_id_str]:
+        if instance_id in active_connections:
             # Requested instance is connected - use it
             target_instance = instance_id
             logger.info(f"[REFRESH_SESSION] Routing to requested instance: {instance_id}")
-        elif "default" in ws_handler.connection_manager.active_connections[user_id_str]:
+        elif "default" in active_connections:
             # Fallback to "default" for old extensions
             target_instance = "default"
             logger.warning(f"[REFRESH_SESSION] Instance {instance_id} not connected, falling back to 'default' (old extension)")
         else:
-            # Fallback to any available instance
-            available_instances = list(ws_handler.connection_manager.active_connections[user_id_str].keys())
+            available_instances = list(active_connections.keys())
             if available_instances:
                 target_instance = available_instances[0]
                 logger.warning(f"[REFRESH_SESSION] Instance {instance_id} not connected, falling back to '{target_instance}'")
             else:
-                # No instances at all
-                logger.error(f"[REFRESH_SESSION] No instances available for user {user_id_str}")
+                logger.error(f"[REFRESH_SESSION] No browser instances connected")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No WebSocket connections available for user"
+                    detail="No browser instances connected. Cannot refresh LinkedIn session."
                 )
     else:
-        # Legacy mode: no instance_id, broadcast to all
-        target_instance = None
-        logger.info(f"[REFRESH_SESSION] No instance_id specified, broadcasting to all connections")
+        available_instances = list(active_connections.keys())
+        if available_instances:
+            target_instance = available_instances[0]
+            logger.info(f"[REFRESH_SESSION] No instance_id specified, using first connected instance: {target_instance}")
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No browser instances connected. Cannot refresh LinkedIn session."
+            )
 
     # Prepare WS request
     import asyncio

@@ -1,11 +1,6 @@
 # backend/app/auth/__init__.py
-# This file can remain empty or be used for helper functions if needed later.
-
-# No need to import Blueprint from flask as we're using FastAPI Router
-# from flask import Blueprint
-
-# FastAPI uses Router instead of Blueprint
-# auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
-
-# Import routes to register them with the Router
-from . import routes 
+# Keep package import side-effect free.
+#
+# Route modules are imported explicitly by the FastAPI app entrypoint,
+# so importing app.auth.* helpers in unit tests should not pull in OAuth
+# or other heavy dependencies unnecessarily.

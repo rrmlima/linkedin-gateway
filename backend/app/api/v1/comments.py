@@ -32,7 +32,7 @@ from app.api.dependencies import get_ws_handler
 from app.auth.dependencies import validate_api_key_from_header_or_body
 # Import LinkedIn services
 from app.linkedin.services.comments import LinkedInCommentsService
-from app.linkedin.helpers import get_linkedin_service, proxy_http_request
+from app.linkedin.helpers import get_linkedin_service, proxy_http_request, refresh_linkedin_session
 from app.core.linkedin_rate_limit import apply_pagination_delay
 
 # Configure logger
@@ -381,6 +381,24 @@ async def post_comment_to_post(
             )
 
             logger.info(f"[POST COMMENT][{mode}] Received response with status {proxy_response['status_code']}")
+
+            if proxy_response['status_code'] in (401, 403):
+                logger.warning(f"[POST COMMENT][{mode}] Status {proxy_response['status_code']} -> refreshing LinkedIn session and retrying once")
+                await refresh_linkedin_session(ws_handler, db, api_key)
+                comments_service = await get_linkedin_service(db, api_key, LinkedInCommentsService)
+                proxy_response = await proxy_http_request(
+                    ws_handler=ws_handler,
+                    user_id=user_id_str,
+                    url=url,
+                    method="POST",
+                    headers=comments_service.headers,
+                    body=payload_str,
+                    response_type="json",
+                    include_credentials=True,
+                    timeout=60.0,
+                    instance_id=api_key.instance_id,
+                )
+                logger.info(f"[POST COMMENT][{mode}] RETRY received response with status {proxy_response['status_code']}")
             
             # Check for HTTP errors
             if proxy_response['status_code'] >= 400:
