@@ -11,6 +11,8 @@ import json
 import random
 import asyncio
 from typing import List, Dict, Any
+
+import httpx
 from uuid import uuid4, UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Body, status, Header
@@ -149,7 +151,16 @@ async def get_post_commenters(
             # --- EXECUTE REQUEST (proxy or direct) ---
             if request_body.server_call:
                 # Direct server-side call
-                raw_json_data = await comments_service._make_request(url)
+                try:
+                    raw_json_data = await comments_service._make_request(url)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code in (302, 403):
+                        logger.warning(f"[COMMENTERS][{mode}] Detected {e.response.status_code} from LinkedIn. Refreshing session via extension...")
+                        await refresh_linkedin_session(ws_handler, db, api_key)
+                        comments_service = await get_linkedin_service(db, api_key, LinkedInCommentsService)
+                        raw_json_data = await comments_service._make_request(url)
+                    else:
+                        raise
             else:
                 # Proxy via browser extension - route to specific instance
                 proxy_response = await proxy_http_request(
@@ -166,6 +177,25 @@ async def get_post_commenters(
                 )
                 
                 logger.info(f"[COMMENTERS][{mode}] Received response with status {proxy_response['status_code']}")
+                
+                # If unauthorized/redirect, refresh session via extension and retry once
+                if proxy_response['status_code'] in (401, 403, 302):
+                    logger.warning(f"[COMMENTERS][{mode}] Status {proxy_response['status_code']} -> refreshing LinkedIn session and retrying once")
+                    await refresh_linkedin_session(ws_handler, db, api_key)
+                    comments_service = await get_linkedin_service(db, api_key, LinkedInCommentsService)
+                    proxy_response = await proxy_http_request(
+                        ws_handler=ws_handler,
+                        user_id=user_id_str,
+                        url=url,
+                        method="GET",
+                        headers=comments_service.headers,
+                        body=None,
+                        response_type="json",
+                        include_credentials=True,
+                        timeout=60.0,
+                        instance_id=api_key.instance_id,
+                    )
+                    logger.info(f"[COMMENTERS][{mode}] Retry received status {proxy_response['status_code']}")
                 
                 # Check for HTTP errors
                 if proxy_response['status_code'] >= 400:
