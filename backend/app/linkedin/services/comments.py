@@ -193,15 +193,19 @@ class LinkedInCommentsService(LinkedInServiceBase):
     
     def _build_headers(self) -> dict:
         """
-        Override base headers to add Content-Type for POST requests.
-        
-        Returns:
-            dict: Headers optimized for comment operations
+        Build headers that mirror the browser extension's comments request.
+
+        For commenter fetches, LinkedIn has been more sensitive to extra
+        browser-like headers than the other endpoints. Keep this header set
+        aligned with the working extension request as closely as possible.
         """
-        headers = super()._build_headers()
-        # Add Content-Type for POST requests (posting/replying to comments)
-        headers['content-type'] = 'application/json'
-        return headers
+        csrf_token = self.csrf_token.strip('"')
+        return {
+            'csrf-token': csrf_token,
+            'accept': 'application/vnd.linkedin.normalized+json+2.1',
+            'x-restli-protocol-version': '2.0.0',
+            'cookie': f'JSESSIONID="{csrf_token}";',
+        }
     
     def _build_commenters_url(
         self,
