@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -15,5 +15,4 @@ class UserRead(BaseModel):
     # Add other fields you want to expose, e.g., subscription info
     # subscription_type: Optional[str] = None 
 
-    class Config:
-        from_attributes = True 
+    model_config = ConfigDict(from_attributes=True)

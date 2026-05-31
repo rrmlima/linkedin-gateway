@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import MetaData, Column, DateTime, String, func
-from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy.orm import declarative_base, declared_attr
 from sqlalchemy.orm import registry
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 

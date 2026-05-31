@@ -4,7 +4,8 @@ API endpoints for post-related operations.
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Header
 from typing import Dict, Any, Optional, List
 from uuid import uuid4, UUID
-from pydantic import BaseModel, Field, validator
+import asyncio
+from pydantic import BaseModel, Field, validator, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select
@@ -32,9 +33,11 @@ from app.core import security # Keep security import
 from app.crud.api_key import API_KEY_PREFIX, API_KEY_PREFIX_LENGTH # Keep constants
 # Import the shared validation function
 from app.auth.dependencies import validate_api_key_from_header_or_body
-# Import LinkedIn services for server-side execution
+# Import LinkedIn services/helpers for server-side execution
+from app.linkedin.helpers import get_linkedin_service, proxy_http_request
 from app.linkedin.services.feed import LinkedInFeedService
 from app.linkedin.services.posts import LinkedInPostsService
+from app.ws.post_actions import request_profile_posts_via_websocket
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -56,8 +59,7 @@ class PostResponseItem(BaseModel):
     engagement: Optional[int] = None
     timestamp: Optional[datetime] = None # Changed to datetime
 
-    class Config:
-        from_attributes = True # Pydantic v2 alias for orm_mode
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Request Body Model --- 
 class FeedRequest(BaseModel):
@@ -65,6 +67,12 @@ class FeedRequest(BaseModel):
     count: int = Field(10, description="Number of posts to fetch (1-50)", ge=1, le=50)
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
     server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+
+
+class ProxyHtmlRequest(BaseModel):
+    url: str = Field(..., description="Absolute LinkedIn URL to fetch through the browser session")
+    api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
+    server_call: bool = Field(False, description="Reserved for parity; proxy mode is used in practice")
 
 router = APIRouter(
     prefix="/posts",
@@ -535,18 +543,63 @@ async def get_profile_posts(
     logger.info(f"[PROFILE_POSTS][{mode}] Parameters - profile_id: {request_body.profile_id}, count: {effective_count}")
     
     try:
-        # Get service (uses CSRF/cookies from api_key object)
-        posts_service = await get_linkedin_service(db, api_key, LinkedInPostsService)
-        
-        # Use service method to extract profile ID and handle pagination internally
-        # This keeps the proven pagination logic from the service
-        result = await posts_service.fetch_posts_for_profile(
-            request_body.profile_id,
-            effective_count,
-            min_delay=request_body.min_delay,
-            max_delay=request_body.max_delay
-        )
-        
+        if request_body.server_call:
+            # Get service (uses CSRF/cookies from api_key object)
+            posts_service = await get_linkedin_service(db, api_key, LinkedInPostsService)
+
+            # Use service method to extract profile ID and handle pagination internally
+            # This keeps the proven pagination logic from the service
+            result = await posts_service.fetch_posts_for_profile(
+                request_body.profile_id,
+                effective_count,
+                min_delay=request_body.min_delay or 2.0,
+                max_delay=request_body.max_delay or 5.0
+            )
+        else:
+            posts_service = await get_linkedin_service(db, api_key, LinkedInPostsService)
+            identity = await posts_service._resolve_profile_identity(request_body.profile_id)
+            vanity = identity.get('vanity')
+            if not vanity:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Could not resolve profile vanity name for activity fetch')
+
+            activity_url = f"https://www.linkedin.com/in/{vanity}/recent-activity/posts/"
+            logger.info(f"[PROFILE_POSTS][{mode}] Proxying recent activity page: {activity_url}")
+            proxy_response = await proxy_http_request(
+                ws_handler=ws_handler,
+                user_id=user_id_str,
+                url=activity_url,
+                method="GET",
+                headers=posts_service.headers,
+                body=None,
+                response_type="text",
+                include_credentials=True,
+                timeout=90.0,
+                instance_id=api_key.instance_id,
+            )
+
+            if proxy_response['status_code'] >= 400:
+                error_msg = f"LinkedIn returned status {proxy_response['status_code']}"
+                logger.error(f"[PROFILE_POSTS][{mode}] {error_msg}")
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=error_msg)
+
+            html_content = proxy_response['body']
+            logger.info(f"[PROFILE_POSTS][{mode}] Proxy HTML size: {len(html_content)} bytes")
+            logger.info(
+                f"[PROFILE_POSTS][{mode}] HTML markers: activity_url={html_content.count('/feed/update/')}, "
+                f"graphql={html_content.count('/voyager/api/graphql')}, profile_updates={html_content.count('feedDashProfileUpdates')}, "
+                f"member_comments={html_content.count('feedDashProfileUpdatesByMemberComments')}, member_posts={html_content.count('ByMemberPosts')}, "
+                f"member_updates={html_content.count('ByMemberUpdates')}, commentary={html_content.count('commentary')}, shareUrl={html_content.count('shareUrl')}")
+            graphql_snippets = []
+            for match in re.finditer(r'/voyager/api/graphql.{0,220}', html_content):
+                graphql_snippets.append(match.group(0)[:220])
+                if len(graphql_snippets) >= 5:
+                    break
+            logger.info(f"[PROFILE_POSTS][{mode}] HTML graphql snippets: {graphql_snippets}")
+            posts = posts_service._parse_profile_activity_html(html_content, identity)
+            posts = [post for post in posts if posts_service._activity_is_recent(post.get('postDate'), 30)]
+            posts = posts_service._dedupe_and_sort_profile_posts(posts)[:effective_count]
+            result = {'posts': posts, 'hasMore': len(posts) >= effective_count, 'paginationToken': None}
+
         logger.info(f"[PROFILE_POSTS][{mode}] Successfully fetched {len(result['posts'])} posts")
         
         # Validate/parse the result into Pydantic models
@@ -698,3 +751,43 @@ async def get_post_text(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Execution failed: {str(e)}"
         )
+
+
+@router.post("/proxy-html", tags=["posts"])
+async def proxy_html(
+    request_body: ProxyHtmlRequest = Body(...),
+    ws_handler: WebSocketEventHandler = Depends(get_ws_handler),
+    db: AsyncSession = Depends(get_db),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key", include_in_schema=False),
+):
+    """Fetch raw HTML for a LinkedIn URL through the authenticated browser session."""
+    api_key = await validate_api_key_from_header_or_body(
+        api_key_from_body=request_body.api_key,
+        api_key_header=x_api_key,
+        db=db,
+    )
+    user_id_str = str(api_key.user_id)
+    if not ws_handler.connection_manager.is_instance_connected(api_key.instance_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Browser instance not connected. Please check your extension.",
+        )
+
+    proxy_response = await proxy_http_request(
+        ws_handler=ws_handler,
+        user_id=user_id_str,
+        url=request_body.url,
+        method="GET",
+        headers=None,
+        body=None,
+        response_type="text",
+        include_credentials=True,
+        timeout=90.0,
+        instance_id=api_key.instance_id,
+    )
+    if proxy_response["status_code"] >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"LinkedIn returned status {proxy_response['status_code']}",
+        )
+    return proxy_response

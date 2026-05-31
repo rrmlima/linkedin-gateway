@@ -10,10 +10,15 @@ import logging
 import json
 import random
 import asyncio
+import re
 from typing import List, Dict, Any
+from urllib.parse import quote
 from uuid import uuid4, UUID
 
+import httpx
+
 from fastapi import APIRouter, Depends, HTTPException, Body, status, Header
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
@@ -31,12 +36,217 @@ from app.auth.dependencies import validate_api_key_from_header_or_body
 from app.linkedin.services.reactions import LinkedInReactionsService
 from app.linkedin.helpers import get_linkedin_service, proxy_http_request
 from app.core.linkedin_rate_limit import apply_pagination_delay
+from app.linkedin.utils.my_profile_id import get_my_profile_id_with_fallbacks
+from app.linkedin.utils.parsers import parse_linkedin_post_url
+from app.schemas.post import LikeCommentRequest, LikePostRequest, LikeResponse
 
 # Configure logger
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 router = APIRouter()
+
+
+class DebugProxyHttpRequest(BaseModel):
+    url: str
+    method: str = "GET"
+    body: str | None = None
+    headers: dict[str, str] | None = None
+    api_key: str | None = None
+
+
+_COMMENT_COMPONENT_RE = re.compile(r"^urn:li:(?:comment|fsd_comment):\(([^,]+),([^\)]+)\)$")
+_DASH_REACTIONS_QUERY_ID = "voyagerSocialDashReactions.b731222600772fd42464c0fe19bd722b"
+_DASH_REACTIONS_URL = (
+    "https://www.linkedin.com/voyager/api/graphql"
+    f"?action=execute&queryId={_DASH_REACTIONS_QUERY_ID}"
+)
+
+
+def _extract_comment_components(comment_urn: str) -> tuple[str, str] | None:
+    normalized = comment_urn.strip()
+    match = _COMMENT_COMPONENT_RE.search(normalized)
+    if not match:
+        return None
+    first, second = match.group(1).strip(), match.group(2).strip()
+    if first.startswith("urn:li:") and not second.startswith("urn:li:"):
+        return first, second
+    if second.startswith("urn:li:") and not first.startswith("urn:li:"):
+        return second, first
+    return None
+
+
+def _normalize_comment_reaction_urn(comment_urn: str) -> str:
+    components = _extract_comment_components(comment_urn)
+    if not components:
+        return comment_urn.strip()
+    thread_urn, comment_id = components
+    return f"urn:li:comment:({thread_urn},{comment_id})"
+
+
+def _extract_comment_object_urn(comment_urn: str) -> str:
+    components = _extract_comment_components(comment_urn)
+    if components:
+        return components[0]
+    return comment_urn.strip()
+
+
+def _comment_graphql_thread_urn(comment_urn: str) -> str:
+    normalized = _normalize_comment_reaction_urn(comment_urn)
+    return normalized.replace("urn:li:activity:", "activity:")
+
+
+def _graphql_like_payload(*, target_urn: str, object_urn: str) -> dict[str, Any]:
+    thread_urn = target_urn if target_urn == object_urn else _comment_graphql_thread_urn(target_urn)
+    return {
+        "variables": {
+            "entity": {
+                "reactionType": "LIKE",
+            },
+            "threadUrn": thread_urn,
+        },
+        "queryId": _DASH_REACTIONS_QUERY_ID,
+        "includeWebMetadata": True,
+    }
+
+
+def _normalize_like_result(*, status_code: int, body_text: str, target_urn: str, object_urn: str, mode: str) -> LikeResponse:
+    body_lower = (body_text or "").lower()
+    already_liked = status_code == 409 or "already" in body_lower or "duplicate" in body_lower
+    return LikeResponse(
+        success=status_code < 400 or already_liked,
+        already_liked=already_liked,
+        target_urn=target_urn,
+        object_urn=object_urn,
+        mode=mode,
+        status_code=status_code,
+    )
+
+
+async def _create_like(
+    *,
+    db: AsyncSession,
+    api_key,
+    ws_handler: WebSocketEventHandler | None,
+    target_urn: str,
+    object_urn: str,
+    server_call: bool,
+) -> LikeResponse:
+    reactions_service = await get_linkedin_service(db, api_key, LinkedInReactionsService)
+    profile_id = await get_my_profile_id_with_fallbacks(
+        db=db,
+        user_id=api_key.user_id,
+        service=reactions_service,
+        ws_handler=ws_handler,
+        use_proxy=not server_call,
+    )
+    actor_urn = f"urn:li:person:{profile_id}"
+    encoded_actor = quote(actor_urn, safe="")
+    official_payload = {"root": target_urn, "reactionType": "LIKE"}
+    graphql_payload = _graphql_like_payload(target_urn=target_urn, object_urn=object_urn)
+    headers = {
+        **reactions_service.headers,
+        "accept": "application/vnd.linkedin.normalized+json+2.1",
+        "content-type": "application/json; charset=UTF-8",
+        "Linkedin-Version": "202603",
+    }
+    if not any(key.lower() == "x-restli-protocol-version" for key in headers):
+        headers["x-restli-protocol-version"] = "2.0.0"
+
+    if server_call:
+        # Server-side write path should mirror the browser contract first.
+        # LinkedIn Web uses the Voyager GraphQL reaction mutation captured
+        # from the working browser request, so we try that before the REST
+        # fallback. This keeps server-side aligned with the documented web
+        # session model while preserving compatibility if LinkedIn changes.
+        candidates = [
+            (_DASH_REACTIONS_URL, graphql_payload),
+            (f"https://api.linkedin.com/rest/reactions?actor={encoded_actor}", official_payload),
+        ]
+        last_result: LikeResponse | None = None
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            for like_url, payload in candidates:
+                response = await client.post(like_url, headers=headers, json=payload)
+                body_text = response.text
+                last_result = _normalize_like_result(
+                    status_code=response.status_code,
+                    body_text=body_text,
+                    target_urn=target_urn,
+                    object_urn=object_urn,
+                    mode="server",
+                )
+                logger.info(
+                    "[LIKE][SERVER] Candidate %s returned status %s body=%s",
+                    like_url.split("?", 1)[0],
+                    last_result.status_code,
+                    body_text[:500],
+                )
+                if last_result.success:
+                    return last_result
+
+        return last_result or LikeResponse(
+            success=False,
+            already_liked=False,
+            target_urn=target_urn,
+            object_urn=object_urn,
+            mode="server",
+            status_code=0,
+        )
+
+    if ws_handler is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="WebSocket service not available",
+        )
+
+    # The browser-extension path is authenticated with the signed-in linkedin.com
+    # session, so follow the exact GraphQL contract captured from LinkedIn Web.
+    # Keep the documented REST endpoint only as a diagnostic fallback.
+    candidates = [
+        (_DASH_REACTIONS_URL, graphql_payload),
+        (f"https://www.linkedin.com/rest/reactions?actor={encoded_actor}", official_payload),
+    ]
+    last_result: LikeResponse | None = None
+    for like_url, payload in candidates:
+        proxy_response = await proxy_http_request(
+            ws_handler=ws_handler,
+            user_id=str(api_key.user_id),
+            url=like_url,
+            method="POST",
+            headers=headers,
+            body=json.dumps(payload, ensure_ascii=False),
+            response_type="json",
+            include_credentials=True,
+            timeout=60.0,
+            instance_id=api_key.instance_id,
+        )
+        body_text = proxy_response.get("body")
+        if isinstance(body_text, (dict, list)):
+            body_text = json.dumps(body_text, ensure_ascii=False)
+        last_result = _normalize_like_result(
+            status_code=int(proxy_response.get("status_code", 0)),
+            body_text=str(body_text or ""),
+            target_urn=target_urn,
+            object_urn=object_urn,
+            mode="proxy",
+        )
+        logger.info(
+            "[LIKE] Candidate %s returned status %s body=%s",
+            like_url.split("?", 1)[0],
+            last_result.status_code,
+            str(body_text or "")[:500],
+        )
+        if last_result.success:
+            return last_result
+
+    return last_result or LikeResponse(
+        success=False,
+        already_liked=False,
+        target_urn=target_urn,
+        object_urn=object_urn,
+        mode="proxy",
+        status_code=0,
+    )
 
 @router.post("/posts/get-reactions", response_model=GetReactionsResponse, tags=["reactions"])
 async def get_post_reactions(
@@ -221,4 +431,86 @@ async def get_post_reactions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch reactions: {str(e)}"
         )
+
+
+@router.post("/posts/_debug-proxy-http", tags=["reactions"])
+async def debug_proxy_http(
+    request_body: DebugProxyHttpRequest = Body(...),
+    ws_handler: WebSocketEventHandler = Depends(get_ws_handler),
+    db: AsyncSession = Depends(get_db),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key", include_in_schema=False)
+):
+    """Temporary authenticated LinkedIn-only proxy probe for reaction debugging."""
+    if not request_body.url.startswith("https://www.linkedin.com/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only www.linkedin.com URLs are allowed")
+    api_key = await validate_api_key_from_header_or_body(
+        api_key_from_body=request_body.api_key,
+        api_key_header=x_api_key,
+        db=db,
+    )
+    proxy_response = await proxy_http_request(
+        ws_handler=ws_handler,
+        user_id=str(api_key.user_id),
+        url=request_body.url,
+        method=request_body.method.upper(),
+        headers=request_body.headers or {},
+        body=request_body.body,
+        response_type="text",
+        include_credentials=True,
+        timeout=60.0,
+        instance_id=api_key.instance_id,
+    )
+    body = proxy_response.get("body") or ""
+    return {"status_code": proxy_response.get("status_code"), "body": body[:200000]}
+
+
+@router.post("/posts/like-post", response_model=LikeResponse, tags=["reactions"])
+async def like_post(
+    request_body: LikePostRequest = Body(...),
+    ws_handler: WebSocketEventHandler = Depends(get_ws_handler),
+    db: AsyncSession = Depends(get_db),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key", include_in_schema=False)
+):
+    """Like a LinkedIn post after an approval click."""
+    api_key = await validate_api_key_from_header_or_body(
+        api_key_from_body=request_body.api_key,
+        api_key_header=x_api_key,
+        db=db,
+    )
+    target_urn = parse_linkedin_post_url(request_body.post_url)
+    if not target_urn:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not parse post URN from post_url")
+    return await _create_like(
+        db=db,
+        api_key=api_key,
+        ws_handler=ws_handler,
+        target_urn=target_urn,
+        object_urn=target_urn,
+        server_call=request_body.server_call,
+    )
+
+
+@router.post("/posts/like-comment", response_model=LikeResponse, tags=["reactions"])
+async def like_comment(
+    request_body: LikeCommentRequest = Body(...),
+    ws_handler: WebSocketEventHandler = Depends(get_ws_handler),
+    db: AsyncSession = Depends(get_db),
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key", include_in_schema=False)
+):
+    """Like a LinkedIn comment after replying to it."""
+    api_key = await validate_api_key_from_header_or_body(
+        api_key_from_body=request_body.api_key,
+        api_key_header=x_api_key,
+        db=db,
+    )
+    target_urn = _normalize_comment_reaction_urn(request_body.comment_urn)
+    object_urn = _extract_comment_object_urn(target_urn)
+    return await _create_like(
+        db=db,
+        api_key=api_key,
+        ws_handler=ws_handler,
+        target_urn=target_urn,
+        object_urn=object_urn,
+        server_call=request_body.server_call,
+    )
 

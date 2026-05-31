@@ -2,7 +2,7 @@
 Pydantic schemas for posts.
 """
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from uuid import UUID
 
@@ -40,8 +40,7 @@ class PostInDB(PostBase):
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CommenterDetail(BaseModel):
@@ -95,6 +94,30 @@ class ReplyToCommentRequest(BaseModel):
 class CommentResponse(BaseModel):
     """Response model for comment operations."""
     success: bool = Field(..., description="Whether the operation was successful")
+
+
+class LikePostRequest(BaseModel):
+    """Request model for liking a LinkedIn post."""
+    post_url: str = Field(..., description="Full LinkedIn post URL or post URN.")
+    api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
+    server_call: bool = Field(False, description="If true, execute on server; if false, use the browser proxy")
+
+
+class LikeCommentRequest(BaseModel):
+    """Request model for liking a LinkedIn comment."""
+    comment_urn: str = Field(..., description="URN of the comment to like.")
+    api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
+    server_call: bool = Field(False, description="If true, execute on server; if false, use the browser proxy")
+
+
+class LikeResponse(BaseModel):
+    """Response model for like operations."""
+    success: bool = Field(..., description="Whether the operation was successful")
+    already_liked: bool = Field(False, description="True when LinkedIn reported the like already existed")
+    target_urn: str = Field(..., description="The target URN that was liked")
+    object_urn: str = Field(..., description="The top-level share/post URN associated with the like")
+    mode: Optional[str] = Field(None, description="Execution mode used for the request")
+    status_code: Optional[int] = Field(None, description="HTTP status returned by LinkedIn")
 
 
 class ReactorDetail(BaseModel):

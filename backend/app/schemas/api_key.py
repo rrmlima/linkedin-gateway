@@ -3,7 +3,7 @@ Pydantic schemas for API Keys.
 """
 import re
 from typing import Optional, Dict, List, Any
-from pydantic import BaseModel, Field, AnyHttpUrl, field_validator
+from pydantic import BaseModel, Field, AnyHttpUrl, field_validator, ConfigDict
 from uuid import UUID
 from datetime import datetime
 
@@ -25,8 +25,7 @@ class APIKeyInfo(BaseModel):
     last_used_at: Optional[datetime] = None
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Schema for the response when a key is generated/retrieved
 # Inherits from the updated APIKeyInfo

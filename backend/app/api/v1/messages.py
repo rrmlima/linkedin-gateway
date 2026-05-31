@@ -10,7 +10,7 @@ import json
 from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Header
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.dependencies import get_db
@@ -45,8 +45,7 @@ class SendMessageRequest(BaseModel):
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
     server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
     
-    class Config:
-        populate_by_name = True  # Allows both profile_id and profile_identifier
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class MessageResponse(BaseModel):

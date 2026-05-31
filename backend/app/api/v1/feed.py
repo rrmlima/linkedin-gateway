@@ -13,7 +13,7 @@ from uuid import uuid4
 from typing import List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Header
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from sqlalchemy.orm import selectinload
@@ -73,8 +73,7 @@ class PostResponseItem(BaseModel):
     engagement: int | None = None
     timestamp: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Helper functions
