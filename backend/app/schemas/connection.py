@@ -1,7 +1,7 @@
 """
 Pydantic schemas for LinkedIn connection operations.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -24,8 +24,7 @@ class ConnectionDetail(BaseModel):
     profile_url: Optional[str] = Field(None, description="LinkedIn profile URL")
     connected_date: Optional[str] = Field(None, description="Date when connection was established")
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GetConnectionsResponse(BaseModel):

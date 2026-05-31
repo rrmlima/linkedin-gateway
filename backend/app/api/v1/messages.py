@@ -45,8 +45,7 @@ class SendMessageRequest(BaseModel):
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
     server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
     
-    class Config:
-        populate_by_name = True  # Allows both profile_id and profile_identifier
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class MessageResponse(BaseModel):

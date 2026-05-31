@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 
 # Load environment variables from .env file if it exists
@@ -43,38 +43,44 @@ class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
     """
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
     # API configuration
-    API_PORT: int = Field(default=7778, env="API_PORT")
-    API_HOST: str = Field(default="0.0.0.0", env="API_HOST")
+    API_PORT: int = Field(default=7778)
+    API_HOST: str = Field(default="0.0.0.0")
     
     # Database configuration
-    DB_HOST: str = Field(default="localhost", env="DB_HOST")
-    DB_PORT: str = Field(default="5432", env="DB_PORT")
-    DB_USER: str = Field(..., env="DB_USER")
-    DB_PASSWORD: str = Field(..., env="DB_PASSWORD")
-    DB_NAME: str = Field(default="LinkedinGateway", env="DB_NAME")
+    DB_HOST: str = Field(default="localhost")
+    DB_PORT: str = Field(default="5432")
+    DB_USER: str = Field(...)
+    DB_PASSWORD: str = Field(...)
+    DB_NAME: str = Field(default="LinkedinGateway")
     
     DB_URI: Optional[str] = None
     
     # CORS configuration
-    CORS_ORIGINS: Union[str, List[str]] = Field(default="*", env="CORS_ORIGINS")
+    CORS_ORIGINS: Union[str, List[str]] = Field(default="*")
     
     # JWT configuration
-    JWT_SECRET_KEY: str = Field(..., env="JWT_SECRET_KEY")
+    JWT_SECRET_KEY: str = Field(...)
     JWT_ALGORITHM: str = Field(default="HS256")
     JWT_EXPIRATION_MINUTES: int = Field(default=60 * 24)  # 24 hours
     
     # LinkedIn OAuth
-    LINKEDIN_CLIENT_ID: str = Field(..., env="LINKEDIN_CLIENT_ID")
-    LINKEDIN_CLIENT_SECRET: str = Field(..., env="LINKEDIN_CLIENT_SECRET")
-    LINKEDIN_REDIRECT_URI: str = Field(default="http://localhost:7778/auth/callback/linkedin", env="LINKEDIN_REDIRECT_URI")
+    LINKEDIN_CLIENT_ID: str = Field(...)
+    LINKEDIN_CLIENT_SECRET: str = Field(...)
+    LINKEDIN_REDIRECT_URI: str = Field(default="http://localhost:7778/auth/callback/linkedin")
 
     # Frontend URL
-    FRONTEND_URL: str = Field(default="http://localhost:3000", env="FRONTEND_URL") # Assuming React default
+    FRONTEND_URL: str = Field(default="http://localhost:3000") # Assuming React default
     
     # Rate limiting
-    DEFAULT_RATE_LIMIT: int = Field(default=100, env="DEFAULT_RATE_LIMIT")
-    DEFAULT_RATE_WINDOW: int = Field(default=3600, env="DEFAULT_RATE_WINDOW")  # 1 hour in seconds
+    DEFAULT_RATE_LIMIT: int = Field(default=100)
+    DEFAULT_RATE_WINDOW: int = Field(default=3600)  # 1 hour in seconds
     
     @field_validator("DB_URI", mode="before")
     def assemble_db_uri(cls, v: Optional[str], info: Any) -> str:
@@ -102,12 +108,6 @@ class Settings(BaseSettings):
             return v.split(",")
         return v
     
-    class Config:
-        """Config for the BaseSettings class."""
-        env_file = ".env"
-        case_sensitive = True
-        extra = 'ignore'  # Ignore extra fields from environment
-
 
 # Create settings object
 settings = Settings() 
