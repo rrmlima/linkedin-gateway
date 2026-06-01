@@ -173,7 +173,7 @@ class LinkedInProfileIdentityService(LinkedInServiceBase):
         
         try:
             async with httpx.AsyncClient(timeout=self.TIMEOUT, follow_redirects=True) as client:
-                response = await client.get(url, headers=self.headers, cookies=self.linkedin_cookies)
+                response = await client.get(url, headers=self.get_profile_page_headers(), cookies=self.linkedin_cookies)
                 
                 logger.info(f"[HTML_EXTRACT] Response status: {response.status_code}")
                 
@@ -292,7 +292,7 @@ class LinkedInProfileIdentityService(LinkedInServiceBase):
         
         profile_id = await extract_profile_id(
             profile_input=profile_id_or_url,
-            headers=self.headers,
+            headers=self.get_profile_page_headers(),
             timeout=self.TIMEOUT
         )
         logger.info(f"[PROFILE_IDENTITY] Using profile ID: {profile_id}")

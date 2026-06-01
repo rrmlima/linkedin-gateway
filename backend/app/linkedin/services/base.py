@@ -100,6 +100,22 @@ class LinkedInServiceBase:
             # Cookies (filtered stable set)
             'cookie': cookie_string,
         }
+
+    def get_profile_page_headers(self) -> Dict[str, str]:
+        """Return browser-like headers for LinkedIn HTML/profile page navigation."""
+        headers = {**self.headers}
+        headers.pop('accept', None)
+        headers.pop('csrf-token', None)
+        headers.pop('x-restli-protocol-version', None)
+        headers.update({
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'none',
+            'sec-fetch-user': '?1',
+            'upgrade-insecure-requests': '1',
+        })
+        return headers
     
     def _filter_stable_cookies(self, all_cookies: Dict[str, str]) -> Dict[str, str]:
         """

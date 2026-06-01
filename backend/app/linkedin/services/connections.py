@@ -64,7 +64,7 @@ class LinkedInConnectionService(LinkedInServiceBase):
         # Extract profile ID from URL or validate direct ID
         profile_id = await extract_profile_id(
             profile_input=profile_identifier,
-            headers=self.headers,
+            headers=self.get_profile_page_headers(),
             timeout=self.TIMEOUT
         )
         
@@ -93,11 +93,7 @@ class LinkedInConnectionService(LinkedInServiceBase):
         }
         
         # Make the request
-        data = await self._make_request(
-            url=url,
-            method='POST',
-            json=payload
-        )
+        data = await self._make_request(url=url, method='POST', headers=headers, json=payload)
         
         logger.info(f"Successfully sent simple connection request to {profile_id}")
         return data
@@ -132,7 +128,7 @@ class LinkedInConnectionService(LinkedInServiceBase):
         # Extract profile ID from URL or validate direct ID
         profile_id = await extract_profile_id(
             profile_input=profile_identifier,
-            headers=self.headers,
+            headers=self.get_profile_page_headers(),
             timeout=self.TIMEOUT
         )
         
@@ -162,11 +158,7 @@ class LinkedInConnectionService(LinkedInServiceBase):
         }
         
         # Make the request
-        data = await self._make_request(
-            url=url,
-            method='POST',
-            json=payload
-        )
+        data = await self._make_request(url=url, method='POST', headers=headers, json=payload)
         
         logger.info(f"Successfully sent connection request with message to {profile_id}")
         return data

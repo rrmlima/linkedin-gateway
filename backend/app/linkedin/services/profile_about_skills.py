@@ -438,7 +438,7 @@ class LinkedInProfileAboutSkillsService(LinkedInServiceBase):
         
         profile_id = await extract_profile_id(
             profile_input=profile_id_or_url,
-            headers=self.headers,
+            headers=self.get_profile_page_headers(),
             timeout=self.TIMEOUT
         )
         logger.info(f"[PROFILE_ABOUT_SKILLS] Using profile ID: {profile_id}")

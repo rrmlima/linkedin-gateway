@@ -1076,7 +1076,7 @@ class LinkedInProfileService(LinkedInServiceBase):
         try:
             # Fetch HTML page
             async with httpx.AsyncClient(timeout=self.TIMEOUT, follow_redirects=True) as client:
-                response = await client.get(url, headers=self.headers, cookies=self.linkedin_cookies)
+                response = await client.get(url, headers=self.get_profile_page_headers(), cookies=self.linkedin_cookies)
                 
                 logger.info(f"[HTML_EXTRACT] Response status: {response.status_code}")
                 
@@ -1309,7 +1309,7 @@ class LinkedInProfileService(LinkedInServiceBase):
         # ============================================================
         profile_id = await extract_profile_id(
             profile_input=profile_id_or_url,
-            headers=self.headers,
+            headers=self.get_profile_page_headers(),
             timeout=self.TIMEOUT
         )
         logger.info(f"[STEP 1] Profile ID: {profile_id}")
@@ -1395,7 +1395,7 @@ class LinkedInProfileService(LinkedInServiceBase):
         # Extract profile ID using shared utility
         profile_id = await extract_profile_id(
             profile_input=profile_id_or_url,
-            headers=self.headers,
+            headers=self.get_profile_page_headers(),
             timeout=self.TIMEOUT
         )
         logger.info(f"[PROFILE] Using profile ID: {profile_id}")
@@ -1424,7 +1424,7 @@ class LinkedInProfileService(LinkedInServiceBase):
         # Extract profile ID using shared utility
         profile_id = await extract_profile_id(
             profile_input=profile_id_or_url,
-            headers=self.headers,
+            headers=self.get_profile_page_headers(),
             timeout=self.TIMEOUT
         )
         logger.info(f"[PROFILE] Using profile ID: {profile_id}")
