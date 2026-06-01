@@ -17,10 +17,16 @@ from app.api.v1 import comments as comments_api
 
 class _FakeCommentsService:
     def __init__(self, responses):
-        self.headers = {"csrf-token": "ajax:test", "x-li-lang": "pt_BR"}
+        self.headers = {"csrf-token": "ajax:test", "accept": "application/vnd.linkedin.normalized+json+2.1", "x-restli-protocol-version": "2.0.0", "cookie": 'JSESSIONID="ajax:test";'}
         self._responses = list(responses)
         self.request_calls = 0
         self.built_urls = []
+
+    def get_commenter_fetch_headers(self):
+        return self.headers
+
+    def get_comment_write_headers(self):
+        return {**self.headers, "content-type": "application/json; charset=UTF-8"}
 
     def _build_commenters_url(self, post_url, start=0, count=10, num_replies=1, pagination_token=None):
         url = "https://www.linkedin.com/voyager/api/graphql?fake=1"

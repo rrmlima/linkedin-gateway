@@ -168,7 +168,7 @@ async def get_post_commenters(
                     user_id=user_id_str,
                     url=url,
                     method="GET",
-                    headers=comments_service.headers,
+                    headers=comments_service.get_commenter_fetch_headers(),
                     body=None,
                     response_type="json",
                     include_credentials=True,
@@ -188,7 +188,7 @@ async def get_post_commenters(
                         user_id=user_id_str,
                         url=url,
                         method="GET",
-                        headers=comments_service.headers,
+                        headers=comments_service.get_commenter_fetch_headers(),
                         body=None,
                         response_type="json",
                         include_credentials=True,
@@ -387,6 +387,7 @@ async def post_comment_to_post(
             await comments_service._make_request(
                 url=url,
                 method='POST',
+                headers=comments_service.get_comment_write_headers(),
                 json=payload
             )
             logger.info(f"[POST COMMENT][{mode}] Successfully posted comment")
@@ -402,7 +403,7 @@ async def post_comment_to_post(
                 user_id=user_id_str,
                 url=url,
                 method="POST",
-                headers=comments_service.headers,
+                headers=comments_service.get_comment_write_headers(),
                 body=payload_str,
                 response_type="json",
                 include_credentials=True,
@@ -421,7 +422,7 @@ async def post_comment_to_post(
                     user_id=user_id_str,
                     url=url,
                     method="POST",
-                    headers=comments_service.headers,
+                    headers=comments_service.get_comment_write_headers(),
                     body=payload_str,
                     response_type="json",
                     include_credentials=True,
@@ -541,6 +542,7 @@ async def reply_to_comment(
             await comments_service._make_request(
                 url=url,
                 method='POST',
+                headers=comments_service.get_comment_write_headers(),
                 json=payload
             )
             logger.info(f"[REPLY TO COMMENT][{mode}] Successfully posted reply")
@@ -556,7 +558,7 @@ async def reply_to_comment(
                 user_id=user_id_str,
                 url=url,
                 method="POST",
-                headers=comments_service.headers,
+                headers=comments_service.get_comment_write_headers(),
                 body=payload_str,
                 response_type="json",
                 include_credentials=True,

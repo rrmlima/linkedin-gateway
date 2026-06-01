@@ -90,6 +90,12 @@ def test_like_post_proxy_request(monkeypatch):
     assert body['variables']['threadUrn'] == 'urn:li:activity:123'
     assert body['queryId'] == reactions._DASH_REACTIONS_QUERY_ID
     assert body['includeWebMetadata'] is True
+    headers = captured['kwargs']['headers']
+    assert headers['csrf-token'] == 'ajax:test'
+    assert headers['accept'] == 'application/vnd.linkedin.normalized+json+2.1'
+    assert headers['content-type'] == 'application/json; charset=UTF-8'
+    assert headers['x-restli-protocol-version'] == '2.0.0'
+    assert headers['Linkedin-Version'] == '202603'
 
 
 def test_like_comment_proxy_request(monkeypatch):
@@ -104,3 +110,9 @@ def test_like_comment_proxy_request(monkeypatch):
     assert body['variables']['threadUrn'] == 'urn:li:comment:(activity:123,456)'
     assert body['queryId'] == reactions._DASH_REACTIONS_QUERY_ID
     assert body['includeWebMetadata'] is True
+    headers = captured['kwargs']['headers']
+    assert headers['csrf-token'] == 'ajax:test'
+    assert headers['accept'] == 'application/vnd.linkedin.normalized+json+2.1'
+    assert headers['content-type'] == 'application/json; charset=UTF-8'
+    assert headers['x-restli-protocol-version'] == '2.0.0'
+    assert headers['Linkedin-Version'] == '202603'

@@ -199,6 +199,15 @@ class LinkedInCommentsService(LinkedInServiceBase):
         browser-like headers than the other endpoints. Keep this header set
         aligned with the working extension request as closely as possible.
         """
+        return self.get_commenter_fetch_headers()
+
+    def get_commenter_fetch_headers(self) -> dict:
+        """
+        Return the minimal browser-matched headers for fetching commenters.
+
+        This is the read-side contract used by get-commenters and the private
+        commenter lookup path. Keep this intentionally small.
+        """
         csrf_token = self.csrf_token.strip('"')
         return {
             'csrf-token': csrf_token,
@@ -206,6 +215,18 @@ class LinkedInCommentsService(LinkedInServiceBase):
             'x-restli-protocol-version': '2.0.0',
             'cookie': f'JSESSIONID="{csrf_token}";',
         }
+
+    def get_comment_write_headers(self) -> dict:
+        """
+        Return headers for comment writes and proxy write paths.
+
+        Writes need the broader base LinkedIn browser contract plus JSON content
+        type. Keep this separate from the read-side commenter fetch headers so
+        a read-path fix cannot silently break writes.
+        """
+        headers = super()._build_headers()
+        headers['content-type'] = 'application/json; charset=UTF-8'
+        return headers
     
     def _build_commenters_url(
         self,
