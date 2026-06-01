@@ -3,7 +3,7 @@ API endpoints for handling post reactions.
 
 This endpoint supports two execution modes:
 1. server_call=True: Execute LinkedIn API call directly from backend
-2. server_call=False (default): Execute via browser extension as transparent HTTP proxy
+2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
 """
 
 import logging
@@ -260,7 +260,7 @@ async def get_post_reactions(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False (default): Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Authentication: Provide API key via X-API-Key header OR in request body
     

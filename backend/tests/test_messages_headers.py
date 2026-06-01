@@ -65,6 +65,9 @@ class _FakeMessageService:
         self.headers = LinkedInMessageService(csrf_token='"ajax:test"').headers
         self.prepare_calls = []
 
+    def get_profile_page_headers(self):
+        return self.headers
+
     async def prepare_send_message_request(self, target_profile_id, message_text, my_profile_id=None):
         self.prepare_calls.append((target_profile_id, message_text, my_profile_id))
         return (

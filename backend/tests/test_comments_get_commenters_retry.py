@@ -5,6 +5,8 @@ import os
 from types import SimpleNamespace
 
 import httpx
+import pytest
+from fastapi import HTTPException
 
 os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
@@ -104,11 +106,8 @@ async def _run_get_commenters_retry(monkeypatch):
     return result, refresh_calls, get_service_calls, first_service, second_service
 
 
-def test_get_commenters_server_call_refreshes_and_retries_on_403(monkeypatch):
-    result, refresh_calls, get_service_calls, first_service, second_service = asyncio.run(_run_get_commenters_retry(monkeypatch))
+def test_get_commenters_server_call_rejects_403_without_extension(monkeypatch):
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(_run_get_commenters_retry(monkeypatch))
 
-    assert result.data == []
-    assert refresh_calls["count"] == 1
-    assert get_service_calls["count"] == 2
-    assert first_service.request_calls == 1
-    assert second_service.request_calls == 1
+    assert exc_info.value.status_code == 401

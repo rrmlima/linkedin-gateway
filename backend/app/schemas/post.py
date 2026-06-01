@@ -60,7 +60,7 @@ class GetCommentersRequest(BaseModel):
     count: int = Field(-1, description="Number of comments to fetch. Use -1 to fetch all comments (with pagination), or specify a positive number to fetch up to that many comments.")
     num_replies: Optional[int] = Field(1, description="Number of replies to fetch per comment.")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
     min_delay: Optional[float] = Field(2.0, ge=0, le=30, description="Minimum delay in seconds between paginated requests (default: 2.0)")
     max_delay: Optional[float] = Field(5.0, ge=0, le=60, description="Maximum delay in seconds between paginated requests (default: 5.0)")
 
@@ -77,7 +77,7 @@ class PostCommentRequest(BaseModel):
     )
     comment_text: str = Field(..., description="The text content of the comment")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use proxy via extension")
 
 
 class ReplyToCommentRequest(BaseModel):
@@ -88,7 +88,7 @@ class ReplyToCommentRequest(BaseModel):
     )
     reply_text: str = Field(..., description="The text content of the reply")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use proxy via extension")
 
 
 class CommentResponse(BaseModel):
@@ -100,14 +100,14 @@ class LikePostRequest(BaseModel):
     """Request model for liking a LinkedIn post."""
     post_url: str = Field(..., description="Full LinkedIn post URL or post URN.")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use the browser proxy")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use the browser proxy")
 
 
 class LikeCommentRequest(BaseModel):
     """Request model for liking a LinkedIn comment."""
     comment_urn: str = Field(..., description="URN of the comment to like.")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use the browser proxy")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use the browser proxy")
 
 
 class LikeResponse(BaseModel):
@@ -134,7 +134,7 @@ class GetReactionsRequest(BaseModel):
     post_url: str = Field(..., description="The full URL of the LinkedIn post.")
     count: int = Field(-1, description="Number of reactions to fetch. Use -1 to fetch all reactions (with pagination), or specify a positive number to fetch up to that many reactions.")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
     min_delay: Optional[float] = Field(2.0, ge=0, le=30, description="Minimum delay in seconds between paginated requests (default: 2.0)")
     max_delay: Optional[float] = Field(5.0, ge=0, le=60, description="Maximum delay in seconds between paginated requests (default: 5.0)")
 
@@ -165,7 +165,7 @@ class GetUserCommentsRequest(BaseModel):
     profile_id: str = Field(..., description="LinkedIn profile ID (e.g., 'ACoAABkVEvgBp3i06XxDrVLz2rUjmE4TqHNSPGI') or profile URL (e.g., 'https://www.linkedin.com/in/username/')")
     count: int = Field(-1, ge=-1, le=200, description="Number of comments to fetch. Use -1 to fetch all (with pagination, capped at 200).")
     api_key: Optional[str] = Field(default=None, description="API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
     min_delay: Optional[float] = Field(2.0, ge=0, le=30, description="Min delay between paginated requests (default: 2.0)")
     max_delay: Optional[float] = Field(5.0, ge=0, le=60, description="Max delay between paginated requests (default: 5.0)")
 
@@ -198,7 +198,7 @@ class GetProfilePostsRequest(BaseModel):
     profile_id: str = Field(..., description="The LinkedIn profile ID (e.g., 'ACoAACMM5dYBNanTp_QOusBX7d2mYYF2MalFm9g') or profile URL (e.g., 'https://www.linkedin.com/in/username/')")
     count: int = Field(default=10, ge=1, le=500, description="Number of posts to retrieve (will paginate automatically in chunks of 20)")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
     min_delay: Optional[float] = Field(2.0, ge=0, le=30, description="Minimum delay in seconds between paginated requests (default: 2.0)")
     max_delay: Optional[float] = Field(5.0, ge=0, le=60, description="Maximum delay in seconds between paginated requests (default: 5.0)")
 
@@ -212,7 +212,7 @@ class GetProfilePostsResponse(BaseModel):
 class GetPostTextRequest(BaseModel):
     post_url: str = Field(..., description="The full URL of the LinkedIn post.")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
 
 
 class GetPostTextResponse(BaseModel):

@@ -3,7 +3,7 @@ API endpoints for handling post comments.
 
 This endpoint supports two execution modes:
 1. server_call=True: Execute LinkedIn API call directly from backend
-2. server_call=False (default): Execute via browser extension as transparent HTTP proxy
+2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
 """
 
 import logging
@@ -55,7 +55,7 @@ async def get_post_commenters(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False (default): Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Authentication: Provide API key via X-API-Key header OR in request body
     
@@ -155,10 +155,11 @@ async def get_post_commenters(
                     raw_json_data = await comments_service._make_request(url)
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code in (302, 403):
-                        logger.warning(f"[COMMENTERS][{mode}] Detected {e.response.status_code} from LinkedIn. Refreshing session via extension...")
-                        await refresh_linkedin_session(ws_handler, db, api_key)
-                        comments_service = await get_linkedin_service(db, api_key, LinkedInCommentsService)
-                        raw_json_data = await comments_service._make_request(url)
+                        logger.warning(f"[COMMENTERS][{mode}] Detected {e.response.status_code} from LinkedIn in server-side mode; refusing to fall back to the extension.")
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="LinkedIn session expired or was rejected by LinkedIn. Refresh the stored server-side cookies and retry."
+                        )
                     else:
                         raise
             else:
@@ -302,7 +303,7 @@ async def post_comment_to_post(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False (default): Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Post URL formats supported:
         - Full URL: "https://www.linkedin.com/posts/username_activity-7384096805824937984-wuIW"
@@ -465,7 +466,7 @@ async def reply_to_comment(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False (default): Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Comment URN format:
         "urn:li:fsd_comment:(7383266296794161153,urn:li:activity:7383255837701591040)"

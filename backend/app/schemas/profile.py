@@ -68,7 +68,7 @@ class ScrapeProfileRequest(BaseModel):
     """Request schema for scraping a LinkedIn profile."""
     profile_id: str = Field(..., description="LinkedIn profile ID or URL (e.g., 'ACoAACMM5dYB...' or 'https://www.linkedin.com/in/username/')")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
 
 
 class ProfileExperience(BaseModel):
@@ -138,7 +138,7 @@ class ScrapeProfileExperiencesRequest(BaseModel):
     """Request schema for scraping profile experiences."""
     profile_id: str = Field(..., description="LinkedIn profile ID or URL")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
 
 
 class ScrapeProfileExperiencesResponse(BaseModel):
@@ -150,7 +150,7 @@ class ScrapeProfileRecommendationsRequest(BaseModel):
     """Request schema for scraping profile recommendations."""
     profile_id: str = Field(..., description="LinkedIn profile ID or URL")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
 
 
 class ScrapeProfileRecommendationsResponse(BaseModel):
@@ -162,7 +162,7 @@ class ScrapeProfileIdentityRequest(BaseModel):
     """Request schema for scraping profile identity data."""
     profile_id: str = Field(..., description="LinkedIn profile ID or URL")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
 
 
 class ScrapeProfileIdentityResponse(BaseModel):
@@ -183,7 +183,7 @@ class ScrapeProfileContactRequest(BaseModel):
     """Request schema for scraping profile contact information."""
     profile_id: str = Field(..., description="LinkedIn profile ID or URL")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
 
 
 class ScrapeProfileContactResponse(BaseModel):
@@ -199,7 +199,7 @@ class ScrapeProfileAboutSkillsRequest(BaseModel):
     """Request schema for scraping profile about section and skills."""
     profile_id: str = Field(..., description="LinkedIn profile ID or URL")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
 
 
 class ExperienceEntry(BaseModel):

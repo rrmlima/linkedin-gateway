@@ -36,7 +36,7 @@ class ProfileIdRequest(BaseModel):
         example="https://www.linkedin.com/in/vlad-centea-821435309"
     )
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use proxy via extension")
 
 
 class ProfileIdResponse(BaseModel):
@@ -165,7 +165,7 @@ async def extract_profile_id_endpoint(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side execution
-    2. server_call=False: Execution via browser extension proxy
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Args:
         request_data: Request parameters including profile_url, api_key, server_call
@@ -214,7 +214,7 @@ async def extract_profile_id_endpoint(
         
         # Fetch the profile HTML page using authenticated service
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            response = await client.get(profile_url, headers=service.headers)
+            response = await client.get(profile_url, headers=service.get_profile_page_headers())
             response.raise_for_status()
             html = response.text
         

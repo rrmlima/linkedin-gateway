@@ -52,7 +52,7 @@ class FeedRequest(BaseModel):
     start_index: int = Field(0, description="Starting index for posts")
     count: int = Field(10, description="Number of posts to fetch (1-50)", ge=1, le=50)
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use proxy via extension")
 
 
 class PostResponseItem(BaseModel):
@@ -228,7 +228,7 @@ async def request_feed_posts(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False: Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Args:
         request_data: Request parameters including api_key, start_index, count, server_call.

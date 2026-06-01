@@ -90,66 +90,22 @@ async def check_if_main_server() -> bool:
 
 async def validate_server_call_permission(server_call: bool) -> None:
     """
-    Validate if server_call=true is allowed on this server.
-    
-    Checks edition-specific rules first (via FeatureMatrix), then falls back to
-    server type validation. The default production server does not allow server-side
-    execution (server_call=true). Users must deploy their own private server to use this feature.
-    
-    Args:
-        server_call: The server_call parameter from the request
-        
-    Raises:
-        HTTPException: 403 if server_call=true is not allowed
+    Validate the requested execution mode.
+
+    In server-only deployments, server-side execution is the normal path, so
+    this helper now accepts both values and only logs the request for observability.
+    Legacy proxy/browser mode may still exist in compatibility paths, but it is no
+    longer blocked at the server boundary.
     """
-    if not server_call:
-        # No need to check if server_call is False
-        return
-    
-    # Check edition-specific rules first
     feature_matrix = get_feature_matrix()
-    if not feature_matrix.allows_server_execution:
-        logger.warning(
-            "[SERVER_VALIDATION] Rejected server_call=true request - not allowed by edition configuration"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "Server-side execution not available",
-                "message": (
-                    "Server-side execution (server_call=true) is only available on self-hosted and private instances. "
-                    "This cloud service does not support server-side automation. "
-                    "All operations must be performed through your browser extension (proxy mode). "
-                    "To use server-side execution, deploy your own private instance."
-                ),
-                "restriction": "cloud_service_limitation",
-                "available_on": "self_hosted_instances"
-            }
-        )
-    
-    # Fallback to existing main-server check (preserves current behavior)
     is_main = await check_if_main_server()
-    
-    if server_call and is_main:
-        logger.warning(
-            "[SERVER_VALIDATION] Rejected server_call=true request on default production server"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "Server-side execution not available",
-                "message": (
-                    "Server-side execution (server_call=true) is not available on the default production server. "
-                    "You need your own private server to use this feature. "
-                    "All requests are processed through the secure proxy via your browser extension. "
-                    "Please set server_call=false or omit it to use the proxy mode."
-                ),
-                "restriction": "default_server_limitation",
-                "available_on": "custom_private_servers"
-            }
-        )
-    
-    logger.info(f"[SERVER_VALIDATION] server_call={server_call} validated successfully (is_main={is_main})")
+
+    logger.info(
+        "[SERVER_VALIDATION] server_call=%s validated successfully (is_main=%s, allows_server_execution=%s)",
+        server_call,
+        is_main,
+        feature_matrix.allows_server_execution,
+    )
 
 
 async def get_server_info() -> dict:
@@ -163,8 +119,8 @@ async def get_server_info() -> dict:
     
     return {
         "is_default_server": is_main,
-        "server_call_allowed": not is_main,
-        "execution_mode": "proxy_only" if is_main else "dual_mode",
+        "server_call_allowed": True,
+        "execution_mode": "server_only",
         "instance_id": SERVER_INSTANCE_ID
     }
 

@@ -39,7 +39,7 @@ class SimpleConnectionRequest(BaseModel):
         alias="profile_identifier"
     )
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use proxy via extension")
     
     model_config = ConfigDict(populate_by_name=True)
 
@@ -53,7 +53,7 @@ class ConnectionWithMessageRequest(BaseModel):
     )
     message: str = Field(..., description="Custom message to include with connection request")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use proxy via extension")
     
     model_config = ConfigDict(populate_by_name=True)
 
@@ -76,7 +76,7 @@ async def send_simple_connection_request(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False: Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Args:
         request_data: Request parameters including profile_id, api_key, server_call.
@@ -168,15 +168,13 @@ async def send_simple_connection_request(
                             )
                     except (ValueError, KeyError, AttributeError):
                         pass
-                # Handle 302/403 as session invalid -> trigger refresh and retry once
+                # Handle 302/403 as session invalid in server-side mode; do not fall back to the extension.
                 if isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (302, 403):
-                    logger.warning(f"[CONNECTIONS][{mode}] Detected {e.response.status_code} from LinkedIn. Refreshing session via extension...")
-                    # Request extension to refresh cookies + csrf, persist, and rebuild service
-                    await refresh_linkedin_session(ws_handler, db, api_key)
-                    connection_service = await get_linkedin_service(db, requesting_user_id, LinkedInConnectionService)
-                    # Retry once
-                    response_data = await connection_service.send_simple_connection_request(profile_identifier)
-                    # If successful, continue
+                    logger.warning(f"[CONNECTIONS][{mode}] Detected {e.response.status_code} from LinkedIn in server-side mode; refusing to refresh via the extension.")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="LinkedIn session expired or was rejected by LinkedIn. Refresh the stored server-side cookies and retry."
+                    )
                 else:
                     raise  # Re-raise other exceptions
         else:
@@ -283,7 +281,7 @@ async def send_connection_request_with_message(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False: Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Args:
         request_data: Request parameters including profile_id, message, api_key, server_call.
@@ -373,12 +371,13 @@ async def send_connection_request_with_message(
                             )
                     except (ValueError, KeyError, AttributeError):
                         pass
-                # Handle 302/403 as session invalid -> trigger refresh and retry once
+                # Handle 302/403 as session invalid in server-side mode; do not fall back to the extension.
                 if isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (302, 403):
-                    logger.warning(f"[CONNECTIONS][{mode}] Detected {e.response.status_code} from LinkedIn. Refreshing session via extension...")
-                    await refresh_linkedin_session(ws_handler, db, api_key)
-                    connection_service = await get_linkedin_service(db, requesting_user_id, LinkedInConnectionService)
-                    response_data = await connection_service.send_connection_request_with_message(profile_identifier, message)
+                    logger.warning(f"[CONNECTIONS][{mode}] Detected {e.response.status_code} from LinkedIn in server-side mode; refusing to refresh via the extension.")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="LinkedIn session expired or was rejected by LinkedIn. Refresh the stored server-side cookies and retry."
+                    )
                 else:
                     raise  # Re-raise other exceptions
         else:
@@ -486,7 +485,7 @@ async def get_connections_list(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False: Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Args:
         request_data: Request parameters including start_index, count, api_key, server_call.
@@ -555,13 +554,13 @@ async def get_connections_list(
             except Exception as e:
                 # Check if it's an HTTP error from LinkedIn
                 import httpx
+                # Handle 302/403 as session invalid in server-side mode; do not fall back to the extension.
                 if isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (302, 403):
-                    logger.warning(f"[CONNECTIONS_LIST][{mode}] Detected {e.response.status_code} from LinkedIn. Refreshing session via extension...")
-                    # Request extension to refresh cookies + csrf, persist, and rebuild service
-                    await refresh_linkedin_session(ws_handler, db, api_key)
-                    connection_service = await get_linkedin_service(db, api_key, LinkedInConnectionService)
-                    # Retry once
-                    connections_data = await connection_service.fetch_connections_list(start_index)
+                    logger.warning(f"[CONNECTIONS_LIST][{mode}] Detected {e.response.status_code} from LinkedIn in server-side mode; refusing to refresh via the extension.")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="LinkedIn session expired or was rejected by LinkedIn. Refresh the stored server-side cookies and retry."
+                    )
                 else:
                     raise  # Re-raise other exceptions
         else:

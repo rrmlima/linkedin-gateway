@@ -66,13 +66,13 @@ class FeedRequest(BaseModel):
     start_index: int = Field(..., description="Starting index for posts")
     count: int = Field(10, description="Number of posts to fetch (1-50)", ge=1, le=50)
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use WebSocket client")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use WebSocket client")
 
 
 class ProxyHtmlRequest(BaseModel):
     url: str = Field(..., description="Absolute LinkedIn URL to fetch through the browser session")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="Reserved for parity; proxy mode is used in practice")
+    server_call: bool = Field(True, description="Reserved for parity; proxy mode is used in practice")
 
 router = APIRouter(
     prefix="/posts",
@@ -634,7 +634,7 @@ async def get_post_text(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False (default): Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     Authentication: Provide API key via X-API-Key header OR in request body
     

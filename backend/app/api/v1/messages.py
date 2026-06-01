@@ -43,7 +43,7 @@ class SendMessageRequest(BaseModel):
     )
     message_text: str = Field(..., description="Message text to send")
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use proxy via extension")
     
     model_config = ConfigDict(populate_by_name=True)
 
@@ -56,7 +56,7 @@ class MessageResponse(BaseModel):
 # --- New: Get My Own Profile ID ---
 class GetMyIdRequest(BaseModel):
     api_key: Optional[str] = Field(default=None, description="The user's full API key (optional if provided via X-API-Key header)")
-    server_call: bool = Field(False, description="If true, execute on server; if false, use proxy via extension")
+    server_call: bool = Field(True, description="If true, execute on server; if false, use proxy via extension")
 
 
 class GetMyIdResponse(BaseModel):
@@ -128,7 +128,7 @@ async def send_direct_message(
     
     Supports two execution modes:
     1. server_call=True: Direct server-side LinkedIn API call
-    2. server_call=False: Transparent HTTP proxy via browser extension
+    2. server_call=False: Legacy browser-proxy mode (explicit opt-in)
     
     The endpoint automatically handles both new and existing conversations:
     - If an existing conversation is found, it uses the conversation URN
@@ -206,7 +206,7 @@ async def send_direct_message(
 
         logger.info(f"[MESSAGES][{mode}] Fetching profile HTML for: {profile_url}")
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            response = await client.get(profile_url, headers=message_service.headers)
+            response = await client.get(profile_url, headers=message_service.get_profile_page_headers())
             response.raise_for_status()
             html = response.text
 
@@ -265,10 +265,11 @@ async def send_direct_message(
                 # Check if it's an HTTP error from LinkedIn
                 import httpx
                 if isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (302, 403):
-                    logger.warning(f"[MESSAGES][{mode}] Detected {e.response.status_code} from LinkedIn. Refreshing session via extension...")
-                    await refresh_linkedin_session(ws_handler, db, api_key)
-                    message_service = await get_linkedin_service(db, requesting_user_id, LinkedInMessageService)
-                    response_data = await message_service._make_request(url, method='POST', json=payload_json)
+                    logger.warning(f"[MESSAGES][{mode}] Detected {e.response.status_code} from LinkedIn in server-side mode; refusing to fall back to the extension.")
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="LinkedIn session expired or was rejected by LinkedIn. Refresh the stored server-side cookies and retry."
+                    )
                 else:
                     raise  # Re-raise other exceptions
         else:
