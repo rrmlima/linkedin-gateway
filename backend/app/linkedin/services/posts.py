@@ -28,6 +28,22 @@ logger = logging.getLogger(__name__)
 class LinkedInPostsService(LinkedInServiceBase):
     """Service for LinkedIn post operations."""
 
+    def get_profile_page_headers(self) -> Dict[str, str]:
+        """Headers that mimic a browser navigation to a LinkedIn HTML page."""
+        headers = {**self.headers}
+        headers.pop('accept', None)
+        headers.pop('csrf-token', None)
+        headers.pop('x-restli-protocol-version', None)
+        headers.update({
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'none',
+            'sec-fetch-user': '?1',
+            'upgrade-insecure-requests': '1',
+        })
+        return headers
+
     def _format_post_age(self, timestamp_iso: Optional[str]) -> Optional[str]:
         """Format an ISO timestamp into a rough LinkedIn-style age string."""
         if not timestamp_iso:
@@ -156,7 +172,7 @@ class LinkedInPostsService(LinkedInServiceBase):
                 response = await client.request(
                     method='GET',
                     url=post_url,
-                    headers=self.headers
+                    headers=self.get_profile_page_headers()
                 )
 
                 logger.info(f"[FETCH_POST_HTML] Response status: {response.status_code}")
@@ -401,7 +417,7 @@ class LinkedInPostsService(LinkedInServiceBase):
         try:
             profile_id = await extract_profile_id(
                 profile_input=profile_id_or_url,
-                headers=self.headers,
+                headers=self.get_profile_page_headers(),
                 timeout=self.TIMEOUT,
             )
         except Exception as exc:
@@ -433,7 +449,7 @@ class LinkedInPostsService(LinkedInServiceBase):
         url = f'https://www.linkedin.com/in/{vanity}/recent-activity/posts/'
         logger.info('[PROFILE_POSTS] Fetching direct activity page: %s', url)
         async with httpx.AsyncClient(timeout=self.TIMEOUT, follow_redirects=True) as client:
-            response = await client.get(url, headers=self.headers)
+            response = await client.get(url, headers=self.get_profile_page_headers())
             response.raise_for_status()
             return response.text
 
