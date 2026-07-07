@@ -57,9 +57,14 @@ class DebugProxyHttpRequest(BaseModel):
 
 _COMMENT_COMPONENT_RE = re.compile(r"^urn:li:(?:comment|fsd_comment):\(([^,]+),([^\)]+)\)$")
 _DASH_REACTIONS_QUERY_ID = "voyagerSocialDashReactions.b731222600772fd42464c0fe19bd722b"
+_FLAGSHIP_REACTIONS_SDUIID = "com.linkedin.sdui.reactions.create"
 _DASH_REACTIONS_URL = (
     "https://www.linkedin.com/voyager/api/graphql"
     f"?action=execute&queryId={_DASH_REACTIONS_QUERY_ID}"
+)
+_FLAGSHIP_REACTIONS_URL = (
+    "https://www.linkedin.com/flagship-web/rsc-action/actions/server-request"
+    f"?sduiid={_FLAGSHIP_REACTIONS_SDUIID}"
 )
 
 
@@ -110,6 +115,53 @@ def _graphql_like_payload(*, target_urn: str, object_urn: str) -> dict[str, Any]
     }
 
 
+def _flagship_like_payload(*, target_urn: str, object_urn: str, profile_id: str) -> dict[str, Any]:
+    activity_urn = object_urn if object_urn.startswith("urn:li:activity:") else target_urn
+    activity_id = activity_urn.rsplit(":", 1)[-1]
+    return {
+        "requestId": _FLAGSHIP_REACTIONS_SDUIID,
+        "serverRequest": {
+            "requestId": _FLAGSHIP_REACTIONS_SDUIID,
+            "requestedArguments": {
+                "$type": "proto.sdui.actions.requests.RequestedArguments",
+                "payload": {
+                    "threadUrn": {
+                        "threadUrnActivityThreadUrn": {
+                            "__typename": "proto_com_linkedin_common_ActivityUrn",
+                            "activityUrn": {"activityId": activity_id},
+                        }
+                    },
+                    "reactionType": "ReactionType_LIKE",
+                    "reactionSource": "Update",
+                },
+                "requestedStateKeys": [],
+                "requestMetadata": {
+                    "$type": "proto.sdui.common.RequestMetadata",
+                    "currentActor": {
+                        "$type": "proto.sdui.bindings.core.Bindable",
+                        "key": {
+                            "key": {
+                                "value": {
+                                    "$case": "id",
+                                    "id": f"identitySwitcherActorContext-{activity_urn}",
+                                }
+                            }
+                        },
+                        "content": {"$case": "stringBinding", "stringBinding": {}},
+                    },
+                },
+            },
+            "onClientRequestFailureAction": {"actions": []},
+            "isApfcEnabled": False,
+            "isStreaming": False,
+            "rumPageKey": "",
+            "states": [],
+            "screenId": "com.linkedin.sdui.flagshipnav.feed.MainFeed",
+        },
+        "states": [],
+    }
+
+
 def _normalize_like_result(*, status_code: int, body_text: str, target_urn: str, object_urn: str, mode: str) -> LikeResponse:
     body_lower = (body_text or "").lower()
     already_liked = status_code == 409 or "already" in body_lower or "duplicate" in body_lower
@@ -155,11 +207,10 @@ async def _create_like(
 
     if server_call:
         # Server-side write path should mirror the browser contract first.
-        # LinkedIn Web uses the Voyager GraphQL reaction mutation captured
-        # from the working browser request, so we try that before the REST
-        # fallback. This keeps server-side aligned with the documented web
-        # session model while preserving compatibility if LinkedIn changes.
+        # The captured browser request uses the flagship RSC action endpoint,
+        # so try that before the Voyager GraphQL / REST fallbacks.
         candidates = [
+            (_FLAGSHIP_REACTIONS_URL, _flagship_like_payload(target_urn=target_urn, object_urn=object_urn, profile_id=profile_id)),
             (_DASH_REACTIONS_URL, graphql_payload),
             (f"https://api.linkedin.com/rest/reactions?actor={encoded_actor}", official_payload),
         ]
@@ -200,9 +251,11 @@ async def _create_like(
         )
 
     # The browser-extension path is authenticated with the signed-in linkedin.com
-    # session, so follow the exact GraphQL contract captured from LinkedIn Web.
-    # Keep the documented REST endpoint only as a diagnostic fallback.
+    # session, so follow the exact flagship RSC action contract captured from
+    # LinkedIn Web. Keep the Voyager GraphQL and documented REST endpoint only
+    # as diagnostic fallbacks.
     candidates = [
+        (_FLAGSHIP_REACTIONS_URL, _flagship_like_payload(target_urn=target_urn, object_urn=object_urn, profile_id=profile_id)),
         (_DASH_REACTIONS_URL, graphql_payload),
         (f"https://www.linkedin.com/rest/reactions?actor={encoded_actor}", official_payload),
     ]

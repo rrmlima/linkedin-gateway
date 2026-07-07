@@ -84,12 +84,15 @@ def test_like_post_proxy_request(monkeypatch):
     assert result.target_urn == 'urn:li:activity:123'
     assert result.object_urn == 'urn:li:activity:123'
     assert captured['kwargs']['method'] == 'POST'
-    assert captured['kwargs']['url'] == reactions._DASH_REACTIONS_URL
+    assert captured['kwargs']['url'] == reactions._FLAGSHIP_REACTIONS_URL
     body = json.loads(captured['kwargs']['body'])
-    assert body['variables']['entity']['reactionType'] == 'LIKE'
-    assert body['variables']['threadUrn'] == 'urn:li:activity:123'
-    assert body['queryId'] == reactions._DASH_REACTIONS_QUERY_ID
-    assert body['includeWebMetadata'] is True
+    assert body['requestId'] == reactions._FLAGSHIP_REACTIONS_SDUIID
+    assert body['serverRequest']['requestId'] == reactions._FLAGSHIP_REACTIONS_SDUIID
+    payload = body['serverRequest']['requestedArguments']['payload']
+    assert payload['reactionType'] == 'ReactionType_LIKE'
+    assert payload['reactionSource'] == 'Update'
+    assert payload['threadUrn']['threadUrnActivityThreadUrn']['activityUrn']['activityId'] == '123'
+    assert body['serverRequest']['requestedArguments']['requestMetadata']['currentActor']['key']['key']['value']['id'] == 'identitySwitcherActorContext-urn:li:activity:123'
     headers = captured['kwargs']['headers']
     assert headers['csrf-token'] == 'ajax:test'
     assert headers['accept'] == 'application/vnd.linkedin.normalized+json+2.1'
@@ -104,12 +107,15 @@ def test_like_comment_proxy_request(monkeypatch):
     assert result.mode == 'proxy'
     assert result.target_urn == 'urn:li:comment:(urn:li:activity:123,456)'
     assert result.object_urn == 'urn:li:activity:123'
-    assert captured['kwargs']['url'] == reactions._DASH_REACTIONS_URL
+    assert captured['kwargs']['url'] == reactions._FLAGSHIP_REACTIONS_URL
     body = json.loads(captured['kwargs']['body'])
-    assert body['variables']['entity']['reactionType'] == 'LIKE'
-    assert body['variables']['threadUrn'] == 'urn:li:comment:(activity:123,456)'
-    assert body['queryId'] == reactions._DASH_REACTIONS_QUERY_ID
-    assert body['includeWebMetadata'] is True
+    assert body['requestId'] == reactions._FLAGSHIP_REACTIONS_SDUIID
+    assert body['serverRequest']['requestId'] == reactions._FLAGSHIP_REACTIONS_SDUIID
+    payload = body['serverRequest']['requestedArguments']['payload']
+    assert payload['reactionType'] == 'ReactionType_LIKE'
+    assert payload['reactionSource'] == 'Update'
+    assert payload['threadUrn']['threadUrnActivityThreadUrn']['activityUrn']['activityId'] == '123'
+    assert body['serverRequest']['requestedArguments']['requestMetadata']['currentActor']['key']['key']['value']['id'] == 'identitySwitcherActorContext-urn:li:activity:123'
     headers = captured['kwargs']['headers']
     assert headers['csrf-token'] == 'ajax:test'
     assert headers['accept'] == 'application/vnd.linkedin.normalized+json+2.1'

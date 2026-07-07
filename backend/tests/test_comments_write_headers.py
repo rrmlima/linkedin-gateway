@@ -11,6 +11,7 @@ os.environ.setdefault("LINKEDIN_CLIENT_ID", "test")
 os.environ.setdefault("LINKEDIN_CLIENT_SECRET", "test")
 
 from app.api.v1 import comments as comments_api
+from app.linkedin.services.comments import LinkedInCommentsService
 
 
 class _FakeCommentsService:
@@ -163,3 +164,59 @@ def test_reply_to_comment_uses_write_headers_in_proxy_and_server_call(monkeypatc
     assert server_service.last_request_headers == server_service.last_write_headers
     assert server_service.last_request_headers["content-type"] == "application/json; charset=UTF-8"
     assert server_proxy_calls == []
+
+
+def test_real_comment_write_headers_match_browser_capture():
+    service = LinkedInCommentsService(
+        csrf_token='ajax:test',
+        linkedin_cookies={
+            'JSESSIONID': 'ajax:test',
+            'li_at': 'token',
+            'bcookie': 'b',
+            'bscookie': 'bs',
+            'lidc': 'ld',
+        },
+    )
+
+    headers = service.get_comment_write_headers()
+
+    assert headers['content-type'] == 'application/json; charset=UTF-8'
+    assert headers['referer'] == 'https://www.linkedin.com/preload/'
+    assert headers['x-li-pem-metadata'] == 'Voyager - Feed - Comments=create-a-comment-reply'
+    assert headers['x-li-deco-include-micro-schema'] == 'true'
+    assert headers['x-li-lang'] == 'pt_BR'
+    assert headers['sec-fetch-site'] == 'same-origin'
+    assert 'bcookie=' in headers['cookie']
+    assert 'lidc=' in headers['cookie']
+
+
+def test_prepare_reply_to_comment_normalizes_activity_to_ugc_post(monkeypatch):
+    service = LinkedInCommentsService(
+        csrf_token='ajax:test',
+        linkedin_cookies={
+            'JSESSIONID': 'ajax:test',
+            'li_at': 'token',
+            'bcookie': 'b',
+            'bscookie': 'bs',
+            'lidc': 'ld',
+        },
+    )
+
+    async def fake_get_ugc_post_urn_from_activity(activity_id: str) -> str:
+        assert activity_id == '123'
+        return 'urn:li:ugcPost:999'
+
+    monkeypatch.setattr(service, '_get_ugc_post_urn_from_activity', fake_get_ugc_post_urn_from_activity)
+
+    url, payload = asyncio.run(
+        service.prepare_reply_to_comment_request(
+            'urn:li:fsd_comment:(456,urn:li:activity:123)',
+            'hello back',
+        )
+    )
+
+    assert url.endswith('voyagerSocialDashNormComments?decorationId=com.linkedin.voyager.dash.deco.social.NormComment-43')
+    assert payload['threadUrn'] == 'urn:li:comment:(ugcPost:999,456)'
+    assert payload['commentary']['text'] == 'hello back'
+    assert payload['commentary']['attributesV2'] == []
+    assert payload['commentary']['$type'] == 'com.linkedin.voyager.dash.common.text.TextViewModel'

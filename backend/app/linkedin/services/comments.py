@@ -220,12 +220,26 @@ class LinkedInCommentsService(LinkedInServiceBase):
         """
         Return headers for comment writes and proxy write paths.
 
-        Writes need the broader base LinkedIn browser contract plus JSON content
-        type. Keep this separate from the read-side commenter fetch headers so
+        Writes need the broader base LinkedIn browser contract plus the page-
+        contextual browser headers that LinkedIn's Voyager comment composer
+        sends. Keep this separate from the read-side commenter fetch headers so
         a read-path fix cannot silently break writes.
         """
         headers = super()._build_headers()
-        headers['content-type'] = 'application/json; charset=UTF-8'
+        headers.update({
+            'accept': 'application/vnd.linkedin.normalized+json+2.1',
+            'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7,ko;q=0.6',
+            'content-type': 'application/json; charset=UTF-8',
+            'referer': 'https://www.linkedin.com/preload/',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'x-li-deco-include-micro-schema': 'true',
+            'x-li-lang': 'pt_BR',
+            'x-li-pem-metadata': 'Voyager - Feed - Comments=create-a-comment-reply',
+            'x-li-track': '{"clientVersion":"1.13.44520","mpVersion":"1.13.44520","osName":"web","timezoneOffset":-3,"timezone":"Etc/GMT+3","deviceFormFactor":"DESKTOP","mpName":"voyager-web","displayDensity":1,"displayWidth":1920,"displayHeight":1080}',
+            'x-restli-protocol-version': '2.0.0',
+        })
         return headers
     
     def _build_commenters_url(
@@ -641,11 +655,12 @@ class LinkedInCommentsService(LinkedInServiceBase):
         if not comment_urn or not comment_urn.startswith('urn:li:'):
             raise ValueError(f'Invalid comment URN: {comment_urn}')
         
-        # Extract the post ID and comment ID from the fsd_comment URN
+        # Extract the post ID and comment ID from the fsd_comment URN.
         # Format can be: "urn:li:fsd_comment:(COMMENT_ID,urn:li:activity:ACTIVITY_ID)"
         #            or: "urn:li:fsd_comment:(COMMENT_ID,urn:li:ugcPost:UGC_POST_ID)"
-        # We need to convert this to: "urn:li:comment:(activity:ACTIVITY_ID,COMMENT_ID)"
-        #                         or: "urn:li:comment:(ugcPost:UGC_POST_ID,COMMENT_ID)"
+        # LinkedIn Web's reply composer sends the thread URN in the ugcPost form
+        # when the source comment is attached to an activity feed item, so we try
+        # to normalize activity -> ugcPost first.
         
         import re
         match = re.search(r'urn:li:fsd_comment:\((\d+),urn:li:(activity|ugcPost):(\d+)\)', comment_urn)
@@ -655,6 +670,19 @@ class LinkedInCommentsService(LinkedInServiceBase):
         comment_id = match.group(1)
         post_type = match.group(2)  # 'activity' or 'ugcPost'
         post_id = match.group(3)
+        
+        if post_type == 'activity':
+            try:
+                ugc_post_urn = await self._get_ugc_post_urn_from_activity(post_id)
+                ugc_match = re.search(r'urn:li:ugcPost:(\d+)', ugc_post_urn)
+                if ugc_match:
+                    post_type = 'ugcPost'
+                    post_id = ugc_match.group(1)
+                    logger.info(f"[PREPARE REPLY] Normalized activity {match.group(3)} to ugcPost {post_id}")
+                else:
+                    logger.warning(f"[PREPARE REPLY] Could not extract ugcPost ID from {ugc_post_urn}; using activity thread URN")
+            except Exception as e:
+                logger.warning(f"[PREPARE REPLY] Could not get ugcPost URN, will try with activity URN: {e}")
         
         # Construct the threadUrn for the reply
         thread_urn = f"urn:li:comment:({post_type}:{post_id},{comment_id})"
